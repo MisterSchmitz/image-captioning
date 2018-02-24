@@ -94,18 +94,17 @@ def rnn_forward(x, h0, Wx, Wh, b):
     """    
     N,T,D = x.shape
     H = h0.shape[1]
-    
-    h = np.zeros((T,N,H))
+   
+    h = np.zeros((N,T,H))
     cache = []
-
-    # Iterate through the T found in x
-    h[-1] = h0
-    for t, x_t in enumerate(iter(np.rollaxis(x, 1))):
-        h[t], cache_step = rnn_step_forward(x_t, h[t-1], Wx, Wh, b)
+    
+    h[:,0,:], cache_step = rnn_step_forward(x[:,0,:],h0,Wx,Wh,b)
+    cache.append(cache_step)
+    
+    for t in range(1,x.shape[1]):
+        h[:,t,:], cache_step = rnn_step_forward(x[:,t,:],h[:,t-1,:],Wx,Wh,b)
         cache.append(cache_step)
-    
-    h = np.swapaxes(h,0,1)
-    
+
     return h, cache
 
 
@@ -124,8 +123,6 @@ def rnn_backward(dh, cache):
     - db: Gradient of biases, of shape (H,)
     """
     
-    # TODO: dWh is wrong
-    
     N, T, H = dh.shape
     D = cache[0][0].shape[1]
     
@@ -135,7 +132,7 @@ def rnn_backward(dh, cache):
     dWh = np.zeros((H,H))
     db = np.zeros((H))
     
-    dh = np.swapaxes(dh,0,1)
+    dh = np.swapaxes(dh.copy(),0,1)
     dprev_h = np.zeros((N,H))
 
     for t in reversed(range(T)):

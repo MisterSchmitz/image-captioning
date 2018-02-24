@@ -43,6 +43,7 @@ class CaptioningRNN(object):
         self.params = {}
 
         self.vocab_size = len(word_to_idx)
+        self.hidden_dim = hidden_dim
 
         self._null = word_to_idx['<NULL>']
         self._start = word_to_idx.get('<START>', None)
@@ -203,36 +204,39 @@ class CaptioningRNN(object):
         """
         N = features.shape[0]
         captions = self._null * np.ones((N, max_length), dtype=np.int32)
+        V = self.vocab_size
+        H = self.hidden_dim
 
         # Unpack parameters
         W_proj, b_proj = self.params['W_proj'], self.params['b_proj']
         W_embed = self.params['W_embed']
         Wx, Wh, b = self.params['Wx'], self.params['Wh'], self.params['b']
         W_vocab, b_vocab = self.params['W_vocab'], self.params['b_vocab']
+                
+        # Initial hidden state
+        h0 = np.dot(features, W_proj)+b_proj
+                
+        # Initial word is the <START> token - Don't include in caption
+        capt = self._start * np.ones((N, 1), dtype=np.int32)
+        word_embed, _ = word_embedding_forward(capt, W_embed)
 
-        ###########################################################################
-        # TODO: Implement test-time sampling for the model. You will need to      #
-        # initialize the hidden state of the RNN by applying the learned affine   #
-        # transform to the input image features. The first word that you feed to  #
-        # the RNN should be the <START> token; its value is stored in the         #
-        # variable self._start. At each timestep you will need to do to:          #
-        # (1) Embed the previous word using the learned word embeddings           #
-        # (2) Make an RNN step using the previous hidden state and the embedded   #
-        #     current word to get the next hidden state.                          #
-        # (3) Apply the learned affine transformation to the next hidden state to #
-        #     get scores for all words in the vocabulary                          #
-        # (4) Select the word with the highest score as the next word, writing it #
-        #     to the appropriate slot in the captions variable                    #
-        #                                                                         #
-        # For simplicity, you do not need to stop generating after an <END> token #
-        # is sampled, but you can if you want to.                                 #
-        #                                                                         #
-        # HINT: You will not be able to use the rnn_forward or lstm_forward       #
-        # functions; you'll need to call rnn_step_forward or lstm_step_forward in #
-        # a loop.                                                                 #
-        ###########################################################################
-        pass
-        ############################################################################
-        #                             END OF YOUR CODE                             #
-        ############################################################################
+        # Generate first word and add to captions
+        next_h, _ = rnn_step_forward(np.squeeze(word_embed), h0, Wx, Wh, b)
+        score, _ = temporal_affine_forward(next_h[:, np.newaxis, :], W_vocab, b_vocab)
+        output_word = np.squeeze(np.argmax(score, axis=2))
+        captions[:, 0] = output_word
+        capt = captions[:, 0]
+        
+        for t in range(1,len(captions[0])):
+            word_embed, _ = word_embedding_forward(capt, W_embed)
+            next_h, _ = rnn_step_forward(np.squeeze(word_embed), next_h, Wx, Wh, b)
+            score, _ = temporal_affine_forward(next_h[:, np.newaxis, :], W_vocab, b_vocab)
+            output_word = np.squeeze(np.argmax(score, axis=2))
+            # TODO: remove <END> from caption
+            # if output_word == self.word_to_idx[self._end]:
+            #     return captions
+            # else:
+            captions[:, t] = output_word
+            capt = captions[:, t]
+        
         return captions
